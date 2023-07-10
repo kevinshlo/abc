@@ -368,6 +368,10 @@ Abc_Obj_t * Abc_NtkDupObj( Abc_Ntk_t * pNtkNew, Abc_Obj_t * pObj, int fCopyName 
         else if ( Abc_ObjIsBox(pObj) || Abc_ObjIsNet(pObj) )
             Abc_ObjAssignName( pObjNew, Abc_ObjName(pObj), NULL );
     }
+    // (self-added) copy gateTypes
+    if ( Abc_ObjIsNode(pObj) ) {
+        pObjNew->gateType = pObj->gateType;
+    }
     // copy functionality/names
     if ( Abc_ObjIsNode(pObj) ) // copy the function if functionality is compatible
     {
@@ -590,11 +594,12 @@ Abc_Obj_t * Abc_NtkFindOrCreateNet( Abc_Ntk_t * pNtk, char * pName )
     assert( Abc_NtkIsNetlist(pNtk) );
     if ( pName && (pNet = Abc_NtkFindNet( pNtk, pName )) )
         return pNet;
-//printf( "Creating net %s.\n", pName );
+    // printf( "Creating net %s", pName );
     // create a new net
     pNet = Abc_NtkCreateNet( pNtk );
     if ( pName )
         Nm_ManStoreIdName( pNtk->pManName, pNet->Id, pNet->Type, pName, NULL );
+    // printf(" with id %d.\n", pNet->Id);
     return pNet;
 }
 
@@ -1033,7 +1038,7 @@ void Abc_NodeComplement( Abc_Obj_t * pNode )
                
   SideEffects []
 
-  SeeAlso     []
+  SeeAlso     []a
 
 ***********************************************************************/
 void Abc_NodeComplementInput( Abc_Obj_t * pNode, Abc_Obj_t * pFanin )

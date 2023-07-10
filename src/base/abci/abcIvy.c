@@ -25,7 +25,8 @@
 #include "proof/fraig/fraig.h"
 #include "map/mio/mio.h"
 #include "aig/aig/aig.h"
-#include "aig/gia/gia.h"
+// Yu-Cheng added (for sat_solver)
+#include "sat/bsat/satSolver.h"
 
 #ifdef ABC_USE_CUDD
 #include "bdd/extrab/extraBdd.h"
@@ -503,7 +504,7 @@ Abc_Ntk_t * Abc_NtkIvyFraig( Abc_Ntk_t * pNtk, int nConfLimit, int fDoSparse, in
 int Abc_NtkIvyProve( Abc_Ntk_t ** ppNtk, void * pPars )
 {
     Prove_Params_t * pParams = (Prove_Params_t *)pPars;
-    Abc_Ntk_t * pNtk = *ppNtk, * pNtkTemp;
+    Abc_Ntk_t * pNtk = * ppNtk, * pNtkTemp;
     Abc_Obj_t * pObj, * pFanin;
     Ivy_Man_t * pMan;
     Aig_Man_t * pMan2;
@@ -557,7 +558,120 @@ int Abc_NtkIvyProve( Abc_Ntk_t ** ppNtk, void * pPars )
         pNtk = Abc_NtkBalance( pNtkTemp = pNtk, 0, 0, 0 );          
         Abc_NtkDelete( pNtkTemp );
         Abc_NtkRewrite( pNtk, 0, 0, 0, 0, 0 );
-        Abc_NtkRefactor( pNtk, 10, 1, 16, 0, 0, 0, 0 );
+        Abc_NtkRefactor( pNtk, 10, 16, 0, 0, 0, 0 );
+//printf( "After rwsat = %d. ", Abc_NtkNodeNum(pNtk) );
+//ABC_PRT( "Time", Abc_Clock() - clk );
+    }
+
+    // convert ABC network into IVY network
+    pMan = Abc_NtkIvyBefore( pNtk, 0, 0 );
+
+    // solve the CEC problem
+    RetValue = Ivy_FraigProve( &pMan, pParams );
+//    RetValue = -1;
+
+    // convert IVY network into ABC network    
+    pNtk = Abc_NtkIvyAfter( pNtkTemp = pNtk, pMan, 0, 0 );
+    Abc_NtkDelete( pNtkTemp );
+    // transfer model if given
+    pNtk->pModel = (int *)pMan->pData; pMan->pData = NULL;
+    Ivy_ManStop( pMan );
+
+    // try to prove it using brute force SAT with good CNF encoding
+    if ( RetValue < 0 )
+    {
+        pMan2 = Abc_NtkToDar( pNtk, 0, 0 );
+        // dump the miter before entering high-effort solving
+        if ( pParams->fVerbose )
+        {
+            char pFileName[100];
+            sprintf( pFileName, "cecmiter.aig" );
+            Ioa_WriteAiger( pMan2, pFileName, 0, 0 );
+            printf( "Intermediate reduced miter is written into file \"%s\".\n", pFileName );
+        }
+        RetValue = Fra_FraigSat( pMan2, pParams->nMiteringLimitLast, 0, 0, 0, 0, 0, 0, 0, pParams->fVerbose ); 
+        pNtk->pModel = (int *)pMan2->pData, pMan2->pData = NULL;
+        Aig_ManStop( pMan2 );
+    }
+
+    // try to prove it using brute force BDDs
+#ifdef ABC_USE_CUDD
+    if ( RetValue < 0 && pParams->fUseBdds )
+    {
+        if ( pParams->fVerbose )
+        {
+            printf( "Attempting BDDs with node limit %d ...\n", pParams->nBddSizeLimit );
+            fflush( stdout );
+        }
+        pNtk = Abc_NtkCollapse( pNtkTemp = pNtk, pParams->nBddSizeLimit, 0, pParams->fBddReorder, 0, 0, 0 );
+        if ( pNtk )   
+        {
+            Abc_NtkDelete( pNtkTemp );
+            RetValue = ( (Abc_NtkNodeNum(pNtk) == 1) && (Abc_ObjFanin0(Abc_NtkPo(pNtk,0))->pData == Cudd_ReadLogicZero((DdManager *)pNtk->pManFunc)) );
+        }
+        else 
+            pNtk = pNtkTemp;
+    }
+#endif
+
+    // return the result
+    *ppNtk = pNtk;
+    return RetValue;
+}
+
+// Yu-Cheng added
+int Abc_NtkIvyProveAll( Abc_Ntk_t ** ppNtk, sat_solver ** pSat, void * pPars )
+{
+    Prove_Params_t * pParams = (Prove_Params_t *)pPars;
+    Abc_Ntk_t * pNtk = * ppNtk, * pNtkTemp;
+    Ivy_Man_t * pMan;
+    Aig_Man_t * pMan2;
+    int RetValue;
+    // Yu-Cheng added
+    sat_solver * pSat2 = * pSat;
+    //================
+    assert( Abc_NtkIsStrash(pNtk) || Abc_NtkIsLogic(pNtk) );
+    // experiment with various parameters settings
+//    pParams->fUseBdds = 1;
+//    pParams->fBddReorder = 1;
+//    pParams->nTotalBacktrackLimit = 10000;
+ 
+    // strash the network if it is not strashed already
+    if ( !Abc_NtkIsStrash(pNtk) )
+    {
+        pNtk = Abc_NtkStrash( pNtkTemp = pNtk, 0, 1, 0 );
+        Abc_NtkDelete( pNtkTemp );
+    }
+ 
+
+    // changed in "src\sat\fraig\fraigMan.c"
+    //    pParams->nMiteringLimitStart  = 300;    // starting mitering limit
+    // to be
+    //    pParams->nMiteringLimitStart  = 5000;    // starting mitering limit
+
+    // if SAT only, solve without iteration
+//    RetValue = Abc_NtkMiterSat( pNtk, 2*(ABC_INT64_T)pParams->nMiteringLimitStart, (ABC_INT64_T)0, 0, NULL, NULL );
+    pMan2 = Abc_NtkToDar( pNtk, 0, 0 );
+    RetValue = Fra_FraigSatAll( &pSat2, pMan2, (ABC_INT64_T)pParams->nMiteringLimitStart, (ABC_INT64_T)0, 0, 0, 0, 1, 0, 0, 0 );
+    *pSat = pSat2; 
+    pNtk->pModel = (int *)pMan2->pData, pMan2->pData = NULL;
+    Aig_ManStop( pMan2 );
+//    pNtk->pModel = Aig_ManReleaseData( pMan2 );
+    if ( RetValue >= 0 )
+        return RetValue;
+    // apply AIG rewriting
+    if ( pParams->fUseRewriting && Abc_NtkNodeNum(pNtk) > 500 )
+    {
+//        abctime clk = Abc_Clock();
+//printf( "Before rwsat = %d. ", Abc_NtkNodeNum(pNtk) );
+        pParams->fUseRewriting = 0;
+        pNtk = Abc_NtkBalance( pNtkTemp = pNtk, 0, 0, 0 );          
+        Abc_NtkDelete( pNtkTemp );
+        Abc_NtkRewrite( pNtk, 0, 0, 0, 0, 0 );
+        pNtk = Abc_NtkBalance( pNtkTemp = pNtk, 0, 0, 0 );          
+        Abc_NtkDelete( pNtkTemp );
+        Abc_NtkRewrite( pNtk, 0, 0, 0, 0, 0 );
+        Abc_NtkRefactor( pNtk, 10, 16, 0, 0, 0, 0 );
 //printf( "After rwsat = %d. ", Abc_NtkNodeNum(pNtk) );
 //ABC_PRT( "Time", Abc_Clock() - clk );
     }
@@ -1141,105 +1255,6 @@ Vec_Int_t * Abc_NtkCollectLatchValuesIvy( Abc_Ntk_t * pNtk, int fUseDcs )
     }
     return vArray;
 }
-
-/**Function*************************************************************
-
-  Synopsis    [Convert Ivy into Gia.]
-
-  Description []
-               
-  SideEffects []
-
-  SeeAlso     []
-
-***********************************************************************/
-static inline Ivy_Obj_t * Gia_ObjChild0Copy3( Ivy_Obj_t ** ppNodes, Gia_Obj_t * pObj, int Id )  { return Ivy_NotCond( ppNodes[Gia_ObjFaninId0(pObj, Id)], Gia_ObjFaninC0(pObj) ); }
-static inline Ivy_Obj_t * Gia_ObjChild1Copy3( Ivy_Obj_t ** ppNodes, Gia_Obj_t * pObj, int Id )  { return Ivy_NotCond( ppNodes[Gia_ObjFaninId1(pObj, Id)], Gia_ObjFaninC1(pObj) ); }
-
-Ivy_Man_t * Gia_ManToIvySimple( Gia_Man_t * p )
-{
-    Ivy_Man_t * pNew;
-    Gia_Obj_t * pObj; int i;
-    Ivy_Obj_t ** ppNodes = ABC_FALLOC( Ivy_Obj_t *, Gia_ManObjNum(p) );
-    // create the new manager
-    pNew = Ivy_ManStart();
-    // create the PIs
-    Gia_ManForEachObj( p, pObj, i )
-    {
-        if ( Gia_ObjIsAnd(pObj) )
-            ppNodes[i] = Ivy_And( pNew, Gia_ObjChild0Copy3(ppNodes, pObj, i), Gia_ObjChild1Copy3(ppNodes, pObj, i) );
-        else if ( Gia_ObjIsCi(pObj) )
-            ppNodes[i] = Ivy_ObjCreatePi( pNew );
-        else if ( Gia_ObjIsCo(pObj) )
-            ppNodes[i] = Ivy_ObjCreatePo( pNew, Gia_ObjChild0Copy3(ppNodes, pObj, Gia_ObjId(p, pObj)) );
-        else if ( Gia_ObjIsConst0(pObj) )
-            ppNodes[i] = Ivy_Not(Ivy_ManConst1(pNew));
-        else
-            assert( 0 );
-        assert( i == 0 || Ivy_ObjId(ppNodes[i]) == i );
-    }
-    ABC_FREE( ppNodes );
-    return pNew;
-}
-static inline int Gia_ObjChild0Copy4( int * pNodes, Ivy_Obj_t * pObj )  { return Abc_LitNotCond( pNodes[Ivy_Regular(pObj->pFanin0)->Id], Ivy_IsComplement(pObj->pFanin0) ); }
-static inline int Gia_ObjChild1Copy4( int * pNodes, Ivy_Obj_t * pObj )  { return Abc_LitNotCond( pNodes[Ivy_Regular(pObj->pFanin1)->Id], Ivy_IsComplement(pObj->pFanin1) ); }
-
-Gia_Man_t * Gia_ManFromIvySimple( Ivy_Man_t * p )
-{
-    Gia_Man_t * pNew;
-    Ivy_Obj_t * pObj;
-    int i, * pNodes = ABC_FALLOC( int, Ivy_ManObjIdMax(p) + 1 );
-    pNew = Gia_ManStart( Ivy_ManObjIdMax(p) );
-    pNew->pName = Abc_UtilStrsav( "from_ivy" );
-    Ivy_ManForEachObj( p, pObj, i )
-    {
-        if ( Ivy_ObjIsAnd(pObj) )
-            pNodes[pObj->Id] = Gia_ManAppendAnd( pNew, Gia_ObjChild0Copy4(pNodes, pObj), Gia_ObjChild1Copy4(pNodes, pObj) );
-        else if ( Ivy_ObjIsCi(pObj) )
-            pNodes[pObj->Id] = Gia_ManAppendCi( pNew );
-        else if ( Ivy_ObjIsCo(pObj) )
-            pNodes[pObj->Id] = Gia_ManAppendCo( pNew, Gia_ObjChild0Copy4(pNodes, pObj) );
-        else if ( Ivy_ObjIsConst1(pObj) )
-            pNodes[pObj->Id] = 1;
-        else
-            assert( 0 );
-    }
-    ABC_FREE( pNodes );
-    return pNew;
-}
-Gia_Man_t * Gia_ManIvyFraig( Gia_Man_t * p, int nConfLimit, int fUseProve, int fVerbose )
-{
-    Ivy_FraigParams_t Params, * pParams = &Params; 
-    Gia_Man_t * pNew;
-    Ivy_Man_t * pMan, * pTemp;
-    pMan = Gia_ManToIvySimple( p );
-    if ( pMan == NULL )
-        return NULL;
-    Ivy_FraigParamsDefault( pParams );
-    pParams->nBTLimitNode = nConfLimit;
-    pParams->fVerbose     = fVerbose;
-    pParams->fProve       = fUseProve;
-    pParams->fDoSparse    = 1;
-    pMan = Ivy_FraigPerform( pTemp = pMan, pParams );
-    pNew = Gia_ManFromIvySimple( pMan );
-    if ( pMan->pData )
-    {
-        p->pCexSeq = Abc_CexDeriveFromCombModel( (int *)pMan->pData, Ivy_ManPiNum(pMan), 0, -1 );
-        p->pCexSeq->iPo = Gia_ManFindFailedPoCex( p, p->pCexSeq, 0 );
-        ABC_FREE( pMan->pData );
-    }
-    Ivy_ManStop( pTemp );
-    Ivy_ManStop( pMan );
-    return pNew;
-}
-Gia_Man_t * Gia_ManIvyFraigTest( Gia_Man_t * p, int nConfLimit, int fVerbose )
-{
-    Ivy_Man_t * pMan = Gia_ManToIvySimple( p );
-    Gia_Man_t * pNew = Gia_ManFromIvySimple( pMan );
-    Ivy_ManStop( pMan );
-    return pNew;
-}
-
 
 ////////////////////////////////////////////////////////////////////////
 ///                       END OF FILE                                ///

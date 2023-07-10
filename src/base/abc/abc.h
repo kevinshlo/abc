@@ -107,6 +107,18 @@ typedef enum {
     ABC_INIT_OTHER      // 4:  unused
 } Abc_InitType_t;
 
+// (self-added) gate types
+typedef enum { 
+    SELF_GATE_AND = 0,  // 0
+    SELF_GATE_NAND,     // 1
+    SELF_GATE_OR,       // 2
+    SELF_GATE_NOR,      // 3
+    SELF_GATE_XOR,      // 4
+    SELF_GATE_XNOR,     // 5
+    SELF_GATE_BUF,      // 6
+    SELF_GATE_NOT,      // 7
+} Self_GateType_t;
+
 ////////////////////////////////////////////////////////////////////////
 ///                         BASIC TYPES                              ///
 ////////////////////////////////////////////////////////////////////////
@@ -140,6 +152,7 @@ struct Abc_Obj_t_     // 48/72 bytes (32-bits/64-bits)
     unsigned          fCompl0 :  1;  // complemented attribute of the first fanin in the AIG
     unsigned          fCompl1 :  1;  // complemented attribute of the second fanin in the AIG 
     unsigned          Level   : 20;  // the level of the node
+    unsigned          gateType:  3;  // (self-added) to store gate type
     Vec_Int_t         vFanins;       // the array of fanins
     Vec_Int_t         vFanouts;      // the array of fanouts
     union { void *    pData;         // the network specific data
@@ -783,7 +796,6 @@ extern ABC_DLL void               Abc_NtkAppendToCone( Abc_Ntk_t * pNtkNew, Abc_
 extern ABC_DLL Abc_Ntk_t *        Abc_NtkCreateMffc( Abc_Ntk_t * pNtk, Abc_Obj_t * pNode, char * pNodeName );
 extern ABC_DLL Abc_Ntk_t *        Abc_NtkCreateTarget( Abc_Ntk_t * pNtk, Vec_Ptr_t * vRoots, Vec_Int_t * vValues );
 extern ABC_DLL Abc_Ntk_t *        Abc_NtkCreateFromNode( Abc_Ntk_t * pNtk, Abc_Obj_t * pNode );
-extern ABC_DLL Abc_Ntk_t *        Abc_NtkCreateFromRange( Abc_Ntk_t * pNtk );
 extern ABC_DLL Abc_Ntk_t *        Abc_NtkCreateWithNode( char * pSop );
 extern ABC_DLL Abc_Ntk_t *        Abc_NtkCreateWithNodes( Vec_Ptr_t * vSops );
 extern ABC_DLL void               Abc_NtkDelete( Abc_Ntk_t * pNtk );
@@ -878,7 +890,7 @@ extern ABC_DLL void               Abc_NodeMffcConeSupp( Abc_Obj_t * pNode, Vec_P
 extern ABC_DLL int                Abc_NodeDeref_rec( Abc_Obj_t * pNode );
 extern ABC_DLL int                Abc_NodeRef_rec( Abc_Obj_t * pNode );
 /*=== abcRefactor.c ==========================================================*/
-extern ABC_DLL int                Abc_NtkRefactor( Abc_Ntk_t * pNtk, int nNodeSizeMax, int nMinSaved, int nConeSizeMax, int  fUpdateLevel, int  fUseZeros, int  fUseDcs, int  fVerbose );
+extern ABC_DLL int                Abc_NtkRefactor( Abc_Ntk_t * pNtk, int nNodeSizeMax, int nConeSizeMax, int  fUpdateLevel, int  fUseZeros, int  fUseDcs, int  fVerbose );
 /*=== abcRewrite.c ==========================================================*/
 extern ABC_DLL int                Abc_NtkRewrite( Abc_Ntk_t * pNtk, int fUpdateLevel, int fUseZeros, int fVerbose, int fVeryVerbose, int fPlaceEnable );
 /*=== abcSat.c ==========================================================*/

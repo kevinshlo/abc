@@ -1280,6 +1280,9 @@ int Ver_ParseAssign( Ver_Man_t * pMan, Abc_Ntk_t * pNtk )
             // create the node with the given inputs
             pNode = Abc_NtkCreateNode( pNtk );
             pNode->pData = pFunc;
+            // (self-added) for assign
+            pNode->gateType = SELF_GATE_BUF;
+            
             Abc_ObjAddFanin( pNet, pNode );
             // connect to fanin nets
             for ( i = 0; i < Vec_PtrSize(pMan->vNames)/2; i++ )
@@ -1339,8 +1342,13 @@ int Ver_ParseGateStandard( Ver_Man_t * pMan, Abc_Ntk_t * pNtk, Ver_GateType_t Ga
         return 0;
     Ver_StreamMove( p );
 
+    // allen added: get gate name
+    pWord = Ver_ParseGetName( pMan );
+    if ( pWord == NULL )
+        return 0;
+
     // this is gate name - throw it away
-    if ( Ver_StreamPopChar(p) != '(' )
+    if (  Ver_StreamPopChar(p) != '(' )
     {
         sprintf( pMan->sError, "Cannot parse a standard gate (expected opening parenthesis)." );
         Ver_ParsePrintErrorMessage( pMan );
@@ -1354,23 +1362,61 @@ int Ver_ParseGateStandard( Ver_Man_t * pMan, Abc_Ntk_t * pNtk, Ver_GateType_t Ga
     // parse pairs of formal/actural inputs
     while ( 1 )
     {
+
+        // allen modified: implicit declaration
         // parse the output name
         pWord = Ver_ParseGetName( pMan );
+        // printf("%s\n", pWord);
         if ( pWord == NULL )
             return 0;
+
+
         // get the net corresponding to this output
-        pNet = Ver_ParseFindNet( pNtk, pWord );
+        // pNet = Ver_ParseFindNet( pNtk, pWord );
+        pNet = Abc_NtkFindOrCreateNet( pNtk, pWord );
+        // printf("Find net id %d.\n", pNet->Id);
         if ( pNet == NULL )
         {
             sprintf( pMan->sError, "Net is missing in gate %s.", pWord );
             Ver_ParsePrintErrorMessage( pMan );
             return 0;
         }
+
         // if this is the first net, add it as an output
         if ( Abc_ObjFanoutNum(pNode) == 0 )
+		{
+            // printf("First net: %d.\n", pNet->Id );
             Abc_ObjAddFanin( pNet, pNode );
+			// allen added call create gate in eco
+			#ifdef ECO_LIB
+			if ( eco_flag_parse )
+			{
+				enum NtkGateType type;
+				switch ( GateType )
+				{
+				case VER_GATE_AND: type = NTK_GATE_AND; break;
+				case VER_GATE_NAND: type = NTK_GATE_NAND; break;
+				case VER_GATE_OR: type = NTK_GATE_OR; break;
+				case VER_GATE_NOR: type = NTK_GATE_NOR; break;
+				case VER_GATE_XOR: type = NTK_GATE_XOR; break;
+				case VER_GATE_XNOR: type = NTK_GATE_XNOR; break;
+				case VER_GATE_NOT: type = NTK_GATE_NOT; break;
+				case VER_GATE_BUF: type = NTK_GATE_BUF; break;
+				default: type = NTK_GATE_BUF; break;
+				}
+				pEcoGate = eco_createGate( pWord, (unsigned)type, eco_flag_parse==1 );
+			}
+			#endif
+		}
         else
+		{
             Abc_ObjAddFanin( pNode, pNet );
+			// allen added add fanin
+			#ifdef ECO_LIB
+			if( eco_flag_parse ) eco_addFanin( pEcoGate, pWord );
+			#endif
+
+		}
         // check if it is the end of gate
         Ver_ParseSkipComments( pMan );
         Symbol = Ver_StreamPopChar(p);
@@ -1400,7 +1446,7 @@ int Ver_ParseGateStandard( Ver_Man_t * pMan, Abc_Ntk_t * pNtk, Ver_GateType_t Ga
         Ver_ParsePrintErrorMessage( pMan );
         return 0;
     }
-    // add logic function
+
     if ( GateType == VER_GATE_AND || GateType == VER_GATE_NAND )
         pNode->pData = Hop_CreateAnd( (Hop_Man_t *)pNtk->pManFunc, Abc_ObjFaninNum(pNode) );
     else if ( GateType == VER_GATE_OR || GateType == VER_GATE_NOR )
@@ -1411,9 +1457,26 @@ int Ver_ParseGateStandard( Ver_Man_t * pMan, Abc_Ntk_t * pNtk, Ver_GateType_t Ga
         pNode->pData = Hop_CreateAnd( (Hop_Man_t *)pNtk->pManFunc, Abc_ObjFaninNum(pNode) );
     if ( GateType == VER_GATE_NAND || GateType == VER_GATE_NOR || GateType == VER_GATE_XNOR || GateType == VER_GATE_NOT )
         pNode->pData = Hop_Not( (Hop_Obj_t *)pNode->pData );
+
+    // (self-added) store gateType
+    switch ( GateType )
+    {
+        case VER_GATE_AND:  pNode->gateType = SELF_GATE_AND; break;
+        case VER_GATE_NAND: pNode->gateType = SELF_GATE_NAND; break;
+        case VER_GATE_OR:   pNode->gateType = SELF_GATE_OR; break;
+        case VER_GATE_NOR:  pNode->gateType = SELF_GATE_NOR; break;
+        case VER_GATE_XOR:  pNode->gateType = SELF_GATE_XOR; break;
+        case VER_GATE_XNOR: pNode->gateType = SELF_GATE_XNOR; break;
+        case VER_GATE_NOT:  pNode->gateType = SELF_GATE_NOT; break;
+        case VER_GATE_BUF:  pNode->gateType = SELF_GATE_BUF; break;
+        default: pNode->gateType = SELF_GATE_BUF; break;
+    }
+
+    // allen test
+    // printf( "%s\t%x (complement: %d)\n", Nm_ManFindNameById( pNtk->pManName, Abc_ObjFanout0(pNode)->Id) , ((Hop_Obj_t*)(pNode->pData))->Id, Hop_IsComplement(pNode->pData));
+
     return 1;
 }
-
 /**Function*************************************************************
 
   Synopsis    [Parses one directive.]

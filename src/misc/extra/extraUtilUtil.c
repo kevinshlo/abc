@@ -280,7 +280,7 @@ char * Extra_UtilFileSearch(char *file, char *path, char *mode)
 
     save_path = path = Extra_UtilStrsav(path);
     quit = 0;
-    for (;;) {
+    do {
     cp = strchr(path, ':');
     if (cp != 0) {
         *cp = '\0';
@@ -304,12 +304,8 @@ char * Extra_UtilFileSearch(char *file, char *path, char *mode)
         return filename;
     }
     ABC_FREE(filename);
-    if (quit) {
-        break;
-    } else {
-       path = ++cp;
-    }
-    }
+    path = ++cp;
+    } while (! quit); 
 
     ABC_FREE(save_path);
     return 0;

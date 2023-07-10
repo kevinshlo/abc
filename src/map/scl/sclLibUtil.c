@@ -72,8 +72,6 @@ void Abc_SclHashCells( SC_Lib * p )
     SC_LibForEachCell( p, pCell, i )
     {
         pPlace = Abc_SclHashLookup( p, pCell->pName );
-        if ( *pPlace != -1 && pCell->pName )
-            printf( "There are two standard cells with the same name (%s).\n", pCell->pName );
         assert( *pPlace == -1 );
         *pPlace = i;
     }
@@ -197,11 +195,11 @@ void Abc_SclShortNames( SC_Lib * p )
     char Buffer[10000];
     SC_Cell * pClass, * pCell; SC_Pin * pPin;
     int i, k, n, nClasses = Abc_SclLibClassNum(p);
-    unsigned char nDigits = (unsigned char)Abc_Base10Log( nClasses );
+    int nDigits = Abc_Base10Log( nClasses );
     // itereate through classes
     SC_LibForEachCellClass( p, pClass, i )
     {
-        unsigned char nDigits2 = (unsigned char)Abc_Base10Log( Abc_SclClassCellNum(pClass) );
+        int nDigits2 = Abc_Base10Log( Abc_SclClassCellNum(pClass) );
         SC_RingForEachCell( pClass, pCell, k )
         {
             ABC_FREE( pCell->pName );
@@ -214,13 +212,13 @@ void Abc_SclShortNames( SC_Lib * p )
             SC_CellForEachPinIn( pCell, pPin, n )
             {
                 ABC_FREE( pPin->pName );
-                sprintf( Buffer, "%c", (char)('a'+n) );
+                sprintf( Buffer, "%c", 'a'+n );
                 pPin->pName = Abc_UtilStrsav( Buffer );
             }
             SC_CellForEachPinOut( pCell, pPin, n )
             {
                 ABC_FREE( pPin->pName );
-                sprintf( Buffer, "%c", (char)('z'-n+pCell->n_inputs) );
+                sprintf( Buffer, "%c", 'z'-n+pCell->n_inputs );
                 pPin->pName = Abc_UtilStrsav( Buffer );
             }
         }

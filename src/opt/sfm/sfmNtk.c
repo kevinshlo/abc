@@ -166,7 +166,7 @@ void Sfm_CreateLevelR( Vec_Wec_t * vFanouts, Vec_Int_t * vLevelsR, Vec_Str_t * v
 ***********************************************************************/
 Sfm_Ntk_t * Sfm_NtkConstruct( Vec_Wec_t * vFanins, int nPis, int nPos, Vec_Str_t * vFixed, Vec_Str_t * vEmpty, Vec_Wrd_t * vTruths, Vec_Int_t * vStarts, Vec_Wrd_t * vTruths2 )
 {
-    Sfm_Ntk_t * p; int i;
+    Sfm_Ntk_t * p;
     Sfm_CheckConsistency( vFanins, nPis, nPos, vFixed );
     p = ABC_CALLOC( Sfm_Ntk_t, 1 );
     p->nObjs    = Vec_WecSize( vFanins );
@@ -192,10 +192,6 @@ Sfm_Ntk_t * Sfm_NtkConstruct( Vec_Wec_t * vFanins, int nPis, int nPos, Vec_Str_t
     Vec_IntFill( &p->vVar2Id,   2*p->nObjs, -1 );
     p->vCover   = Vec_IntAlloc( 1 << 16 );
     p->vCnfs    = Sfm_CreateCnf( p );
-    // elementary truth tables
-    for ( i = 0; i < SFM_FANIN_MAX; i++ )
-        p->pTtElems[i] = p->TtElems[i];
-    Abc_TtElemInit( p->pTtElems, SFM_FANIN_MAX );
     return p;
 }
 void Sfm_NtkPrepare( Sfm_Ntk_t * p )
@@ -319,14 +315,13 @@ void Sfm_NtkUpdateLevelR_rec( Sfm_Ntk_t * p, int iNode )
     Sfm_ObjForEachFanin( p, iNode, iFanin, i )
         Sfm_NtkUpdateLevelR_rec( p, iFanin );
 }
-void Sfm_NtkUpdate( Sfm_Ntk_t * p, int iNode, int f, int iFaninNew, word uTruth, word * pTruth )
+void Sfm_NtkUpdate( Sfm_Ntk_t * p, int iNode, int f, int iFaninNew, word uTruth )
 {
     int iFanin = Sfm_ObjFanin( p, iNode, f );
-    int nWords = Abc_Truth6WordNum( Sfm_ObjFaninNum(p, iNode) - (int)(iFaninNew == -1) );
     assert( Sfm_ObjIsNode(p, iNode) );
     assert( iFanin != iFaninNew );
-    assert( Sfm_ObjFaninNum(p, iNode) <= SFM_FANIN_MAX );
-    if ( Abc_TtIsConst0(pTruth, nWords) || Abc_TtIsConst1(pTruth, nWords) )
+    assert( Sfm_ObjFaninNum(p, iNode) <= 6 );
+    if ( uTruth == 0 || ~uTruth == 0 )
     {
         Sfm_ObjForEachFanin( p, iNode, iFanin, f )
         {
@@ -351,9 +346,7 @@ void Sfm_NtkUpdate( Sfm_Ntk_t * p, int iNode, int f, int iFaninNew, word uTruth,
         Sfm_NtkUpdateLevelR_rec( p, iFanin );
     // update truth table
     Vec_WrdWriteEntry( p->vTruths, iNode, uTruth );
-    if ( p->vTruths2 && Vec_WrdSize(p->vTruths2) )
-        Abc_TtCopy( Vec_WrdEntryP(p->vTruths2, Vec_IntEntry(p->vStarts, iNode)), pTruth, nWords, 0 );
-    Sfm_TruthToCnf( uTruth, pTruth, Sfm_ObjFaninNum(p, iNode), p->vCover, (Vec_Str_t *)Vec_WecEntry(p->vCnfs, iNode) );
+    Sfm_TruthToCnf( uTruth, NULL, Sfm_ObjFaninNum(p, iNode), p->vCover, (Vec_Str_t *)Vec_WecEntry(p->vCnfs, iNode) );
 }
 
 /**Function*************************************************************

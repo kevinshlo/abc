@@ -44,13 +44,12 @@ struct Odc_Obj_t_
 
 struct Odc_Man_t_
 {
-    // don't-care parameters
+    // dont'-care parameters
     int                     nVarsMax;    // the max number of cut variables
     int                     nLevels;     // the number of ODC levels
     int                     fVerbose;    // the verbosiness flag
     int                     fVeryVerbose;// the verbosiness flag to print per-node stats
     int                     nPercCutoff; // cutoff percentage
-    int                     skipQuant;
 
     // windowing
     Abc_Obj_t *             pNode;       // the node for windowing
@@ -178,7 +177,6 @@ Odc_Man_t * Abc_NtkDontCareAlloc( int nVarsMax, int nLevels, int fVerbose, int f
     p->fVerbose     = fVerbose;
     p->fVeryVerbose = fVeryVerbose;
     p->nPercCutoff  = 10;
-    p->skipQuant    = 0;
 
     // windowing
     p->vRoots    = Vec_PtrAlloc( 128 );
@@ -746,10 +744,7 @@ unsigned Abc_NtkDontCareCofactors_rec( Odc_Man_t * p, Odc_Lit_t Lit, unsigned uM
     // skip visited objects
     pObj = Odc_Lit2Obj( p, Lit );
     if ( Odc_ObjIsTravIdCurrent(p, pObj) )
-    {
-        p->skipQuant = 1;
         return pObj->uData;
-    }
     Odc_ObjSetTravIdCurrent(p, pObj);
     // skip objects out of the cone
     if ( (pObj->uMask & uMask) == 0 )
@@ -769,7 +764,6 @@ unsigned Abc_NtkDontCareCofactors_rec( Odc_Man_t * p, Odc_Lit_t Lit, unsigned uM
     uLit1 = Odc_NotCond( (Odc_Lit_t)(uData1 >> 16), Odc_ObjFaninC1(pObj) );
     uRes1 = Odc_And( p, uLit0, uLit1 );
     // find the result
-    p->skipQuant = 0;
     return pObj->uData = ((uRes1 << 16) | uRes0);
 }
 
@@ -789,7 +783,6 @@ int Abc_NtkDontCareQuantify( Odc_Man_t * p )
     Odc_Lit_t uRes0, uRes1;
     unsigned uData;
     int i;
-    p->skipQuant = 0;
     assert( p->iRoot < 0xffff );
     assert( Vec_PtrSize(p->vBranches) <= 32 ); // the mask size
     for ( i = 0; i < Vec_PtrSize(p->vBranches); i++ )
@@ -797,8 +790,6 @@ int Abc_NtkDontCareQuantify( Odc_Man_t * p )
         // compute the cofactors w.r.t. this variable
         Odc_ManIncrementTravId( p );
         uData = Abc_NtkDontCareCofactors_rec( p, Odc_Regular(p->iRoot), (1 << i) );
-        if ( p->skipQuant ) 
-            continue;
         uRes0 = Odc_NotCond( (Odc_Lit_t)(uData & 0xffff), Odc_IsComplement(p->iRoot) );
         uRes1 = Odc_NotCond( (Odc_Lit_t)(uData >> 16),    Odc_IsComplement(p->iRoot) );
         // quantify this variable existentially

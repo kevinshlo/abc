@@ -46,7 +46,6 @@ struct Dar_RwrPar_t_
 {
     int              nCutsMax;       // the maximum number of cuts to try
     int              nSubgMax;       // the maximum number of subgraphs to try
-    int              nMinSaved;      // the minumum number of nodes saved
     int              fFanout;        // support fanout representation
     int              fUpdateLevel;   // update level 
     int              fUseZeros;      // performs zero-cost replacement

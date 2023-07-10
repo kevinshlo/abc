@@ -444,7 +444,6 @@ Aig_Man_t * Ssw_SignalCorrespondence( Aig_Man_t * pAig, Ssw_Pars_t * pPars )
     // if parameters are not given, create them
     if ( pPars == NULL )
         Ssw_ManSetDefaultParams( pPars = &Pars );
-/*
     // consider the case of empty AIG
     if ( Aig_ManNodeNum(pAig) == 0 )
     {
@@ -453,7 +452,6 @@ Aig_Man_t * Ssw_SignalCorrespondence( Aig_Man_t * pAig, Ssw_Pars_t * pPars )
         Aig_ManReprStart( pAig,Aig_ManObjNumMax(pAig) );
         return Aig_ManDupOrdered(pAig);
     }
-*/
     // check and update parameters
     if ( pPars->fLatchCorrOpt )
     {
